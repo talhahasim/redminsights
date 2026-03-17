@@ -1,4 +1,4 @@
-import protobuf from "protobufjs";
+import protobuf from "protobufjs/light";
 
 const schema = {
   nested: {
