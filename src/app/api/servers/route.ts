@@ -38,17 +38,20 @@ function buildResourceMap(servers: ServerInfo[]): Record<string, ResourceStats> 
   return map;
 }
 
-async function getKV(): Promise<KVNamespace | null> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type KV = any;
+
+function getKV(): KV | null {
   try {
-    // Access Cloudflare bindings from global context
-    const env = (globalThis as unknown as { env?: { CACHE?: KVNamespace } }).env;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const env = (globalThis as any).env;
     return env?.CACHE || null;
   } catch {
     return null;
   }
 }
 
-async function getCachedData(kv: KVNamespace | null): Promise<CacheData | null> {
+async function getCachedData(kv: KV | null): Promise<CacheData | null> {
   if (!kv) return null;
   try {
     const data = await kv.get(CACHE_KEY, "json");
@@ -58,7 +61,7 @@ async function getCachedData(kv: KVNamespace | null): Promise<CacheData | null> 
   }
 }
 
-async function setCachedData(kv: KVNamespace | null, data: CacheData): Promise<void> {
+async function setCachedData(kv: KV | null, data: CacheData): Promise<void> {
   if (!kv) return;
   try {
     await kv.put(CACHE_KEY, JSON.stringify(data), { expirationTtl: 86400 });
@@ -105,7 +108,7 @@ function buildMeta(data: CacheData) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl;
-    const kv = await getKV();
+    const kv = getKV();
 
     // Try to get cached data
     let data = await getCachedData(kv);
@@ -258,7 +261,7 @@ export async function GET(request: NextRequest) {
 // Enrichment endpoint - call this manually or via cron to populate cache
 export async function POST(request: NextRequest) {
   try {
-    const kv = await getKV();
+    const kv = getKV();
     if (!kv) {
       return NextResponse.json({ error: "KV not available" }, { status: 500 });
     }
