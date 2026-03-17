@@ -3,11 +3,9 @@ import {
   fetchAndDecodeServers,
   enrichAllServers,
   fetchSingleServer,
-  getFailureStats,
   type ServerInfo,
 } from "@/lib/decoder";
 
-// Required for Cloudflare Pages
 export const runtime = "edge";
 
 interface ResourceStats {
@@ -15,7 +13,7 @@ interface ResourceStats {
   players: number;
 }
 
-interface CacheEntry {
+interface CacheData {
   servers: ServerInfo[];
   timestamp: number;
   resourceMap: Record<string, ResourceStats>;
@@ -23,8 +21,7 @@ interface CacheEntry {
   totalPlayers: number;
 }
 
-let cache: CacheEntry | null = null;
-let fetchPromise: Promise<void> | null = null;
+const CACHE_KEY = "server_data_v1";
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 function buildResourceMap(servers: ServerInfo[]): Record<string, ResourceStats> {
@@ -41,83 +38,96 @@ function buildResourceMap(servers: ServerInfo[]): Record<string, ResourceStats> 
   return map;
 }
 
-// Edge Runtime + Cloudflare = skip enrichment (timeout issues)
-const isProduction = process.env.NODE_ENV === 'production' || typeof process.env.CF_PAGES !== 'undefined';
-
-async function ensureData(): Promise<void> {
-  const now = Date.now();
-
-  if (cache && now - cache.timestamp < CACHE_DURATION) {
-    return;
+async function getKV(): Promise<KVNamespace | null> {
+  try {
+    // Access Cloudflare bindings from global context
+    const env = (globalThis as unknown as { env?: { CACHE?: KVNamespace } }).env;
+    return env?.CACHE || null;
+  } catch {
+    return null;
   }
-
-  // Deduplicate concurrent requests
-  if (fetchPromise) {
-    await fetchPromise;
-    return;
-  }
-
-  fetchPromise = (async () => {
-    try {
-      console.log("[ensureData] Fetching servers...");
-      const servers = await fetchAndDecodeServers();
-      console.log(`[ensureData] Got ${servers.length} servers`);
-
-      // In production (Vercel), skip enrichment due to timeout limits
-      // In development, do full enrichment
-      if (!isProduction) {
-        console.log("[ensureData] Starting full enrichment...");
-        await enrichAllServers(servers);
-      } else {
-        console.log("[ensureData] Production mode - skipping enrichment (timeout limit)");
-      }
-
-      const enrichedCount = servers.filter((s) => s.resources.length > 0).length;
-      const resourceMap = buildResourceMap(servers);
-      const totalPlayers = servers.reduce((sum, s) => sum + s.clients, 0);
-
-      console.log(`[ensureData] Final: ${enrichedCount}/${servers.length} servers enriched`);
-      console.log(`[ensureData] Failures:`, getFailureStats());
-
-      cache = {
-        servers,
-        timestamp: Date.now(),
-        resourceMap,
-        enrichedCount,
-        totalPlayers,
-      };
-    } finally {
-      fetchPromise = null;
-    }
-  })();
-
-  await fetchPromise;
 }
 
-function buildMeta() {
-  if (!cache) throw new Error("No data available");
+async function getCachedData(kv: KVNamespace | null): Promise<CacheData | null> {
+  if (!kv) return null;
+  try {
+    const data = await kv.get(CACHE_KEY, "json");
+    return data as CacheData | null;
+  } catch {
+    return null;
+  }
+}
+
+async function setCachedData(kv: KVNamespace | null, data: CacheData): Promise<void> {
+  if (!kv) return;
+  try {
+    await kv.put(CACHE_KEY, JSON.stringify(data), { expirationTtl: 86400 });
+  } catch (e) {
+    console.error("KV write error:", e);
+  }
+}
+
+async function fetchFreshData(doEnrich: boolean): Promise<CacheData> {
+  console.log("[fetchFreshData] Fetching servers...");
+  const servers = await fetchAndDecodeServers();
+  console.log(`[fetchFreshData] Got ${servers.length} servers`);
+
+  if (doEnrich) {
+    console.log("[fetchFreshData] Starting enrichment...");
+    await enrichAllServers(servers);
+  }
+
+  const enrichedCount = servers.filter((s) => s.resources.length > 0).length;
+  const resourceMap = buildResourceMap(servers);
+  const totalPlayers = servers.reduce((sum, s) => sum + s.clients, 0);
+
+  console.log(`[fetchFreshData] Enriched: ${enrichedCount}/${servers.length}`);
+
   return {
-    serverCount: cache.servers.length,
-    resourceCount: Object.keys(cache.resourceMap).length,
-    enrichedCount: cache.enrichedCount,
-    totalPlayers: cache.totalPlayers,
-    cachedAt: new Date(cache.timestamp).toISOString(),
+    servers,
+    timestamp: Date.now(),
+    resourceMap,
+    enrichedCount,
+    totalPlayers,
   };
 }
 
-export const maxDuration = 300;
-export const dynamic = "force-dynamic";
+function buildMeta(data: CacheData) {
+  return {
+    serverCount: data.servers.length,
+    resourceCount: Object.keys(data.resourceMap).length,
+    enrichedCount: data.enrichedCount,
+    totalPlayers: data.totalPlayers,
+    cachedAt: new Date(data.timestamp).toISOString(),
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl;
+    const kv = await getKV();
 
-    await ensureData();
-    const data = cache!;
+    // Try to get cached data
+    let data = await getCachedData(kv);
+    const now = Date.now();
+
+    // Check if cache is stale
+    const isStale = !data || now - data.timestamp > CACHE_DURATION;
+
+    if (!data) {
+      // No cache - fetch fresh (without enrichment for speed)
+      data = await fetchFreshData(false);
+      await setCachedData(kv, data);
+    } else if (isStale) {
+      // Cache stale - return old data but trigger background refresh
+      // Note: In Edge Runtime we can't do true background work,
+      // so we just return stale data
+      console.log("[GET] Cache stale, returning old data");
+    }
 
     // Meta-only endpoint
     if (searchParams.get("meta") === "true") {
-      return NextResponse.json(buildMeta());
+      return NextResponse.json(buildMeta(data));
     }
 
     const tab = searchParams.get("tab") || "servers";
@@ -127,7 +137,7 @@ export async function GET(request: NextRequest) {
     const sort = searchParams.get("sort") || (tab === "servers" ? "clients" : "count");
     const dir = searchParams.get("dir") || "desc";
 
-    // Single server lookup by ID
+    // Single server lookup
     const id = searchParams.get("id");
     if (id) {
       const server = data.servers.find((s) => s.id === id);
@@ -135,7 +145,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Server not found" }, { status: 404 });
       }
 
-      // On-demand resource fetch if not yet enriched
+      // On-demand resource fetch if needed
       if (server.resources.length === 0) {
         const resources = await fetchSingleServer(server.id);
         if (resources) {
@@ -151,7 +161,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Single resource lookup by name
+    // Single resource lookup
     const resourceName = searchParams.get("resource");
     if (resourceName) {
       const stats = data.resourceMap[resourceName];
@@ -178,27 +188,17 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const meta = buildMeta();
+    const meta = buildMeta(data);
 
     if (tab === "resources") {
-      // Build global ranks based on count desc (always)
       const allEntries = Object.entries(data.resourceMap)
-        .map(([name, stats]) => ({
-          name,
-          count: stats.count,
-          players: stats.players,
-        }))
+        .map(([name, stats]) => ({ name, count: stats.count, players: stats.players }))
         .sort((a, b) => b.count - a.count);
 
       const globalRankMap = new Map<string, number>();
-      allEntries.forEach((entry, idx) => {
-        globalRankMap.set(entry.name, idx + 1);
-      });
+      allEntries.forEach((entry, idx) => globalRankMap.set(entry.name, idx + 1));
 
-      let entries = allEntries.map((e) => ({
-        ...e,
-        globalRank: globalRankMap.get(e.name)!,
-      }));
+      let entries = allEntries.map((e) => ({ ...e, globalRank: globalRankMap.get(e.name)! }));
 
       if (search) {
         entries = entries.filter((r) => r.name.toLowerCase().includes(search));
@@ -206,16 +206,9 @@ export async function GET(request: NextRequest) {
 
       entries.sort((a, b) => {
         let cmp = 0;
-        switch (sort) {
-          case "name":
-            cmp = a.name.localeCompare(b.name);
-            break;
-          case "players":
-            cmp = a.players - b.players;
-            break;
-          default:
-            cmp = a.count - b.count;
-        }
+        if (sort === "name") cmp = a.name.localeCompare(b.name);
+        else if (sort === "players") cmp = a.players - b.players;
+        else cmp = a.count - b.count;
         return dir === "desc" ? -cmp : cmp;
       });
 
@@ -223,14 +216,7 @@ export async function GET(request: NextRequest) {
       const all = searchParams.get("all") === "true";
       const items = all ? entries : entries.slice((page - 1) * limit, page * limit);
 
-      return NextResponse.json({
-        tab: "resources",
-        items,
-        total,
-        page: all ? 1 : page,
-        hasMore: all ? false : page * limit < total,
-        meta,
-      });
+      return NextResponse.json({ tab: "resources", items, total, page: all ? 1 : page, hasMore: all ? false : page * limit < total, meta });
     }
 
     // Servers tab
@@ -248,40 +234,44 @@ export async function GET(request: NextRequest) {
 
     servers = [...servers].sort((a, b) => {
       let cmp = 0;
-      switch (sort) {
-        case "clients":
-          cmp = a.clients - b.clients;
-          break;
-        case "svMaxclients":
-          cmp = a.svMaxclients - b.svMaxclients;
-          break;
-        case "hostname":
-          cmp = a.hostname.localeCompare(b.hostname);
-          break;
-        case "resources":
-          cmp = a.resources.length - b.resources.length;
-          break;
-        default:
-          cmp = a.clients - b.clients;
-      }
+      if (sort === "clients") cmp = a.clients - b.clients;
+      else if (sort === "svMaxclients") cmp = a.svMaxclients - b.svMaxclients;
+      else if (sort === "hostname") cmp = a.hostname.localeCompare(b.hostname);
+      else if (sort === "resources") cmp = a.resources.length - b.resources.length;
+      else cmp = a.clients - b.clients;
       return dir === "desc" ? -cmp : cmp;
     });
 
     const total = servers.length;
-    const items = servers
-      .slice((page - 1) * limit, page * limit)
-      .map(({ resources, ...rest }) => ({
-        ...rest,
-        resourceCount: resources.length,
-      }));
+    const items = servers.slice((page - 1) * limit, page * limit).map(({ resources, ...rest }) => ({
+      ...rest,
+      resourceCount: resources.length,
+    }));
+
+    return NextResponse.json({ tab: "servers", items, total, page, hasMore: page * limit < total, meta });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// Enrichment endpoint - call this manually or via cron to populate cache
+export async function POST(request: NextRequest) {
+  try {
+    const kv = await getKV();
+    if (!kv) {
+      return NextResponse.json({ error: "KV not available" }, { status: 500 });
+    }
+
+    console.log("[POST] Starting full enrichment...");
+    const data = await fetchFreshData(true);
+    await setCachedData(kv, data);
 
     return NextResponse.json({
-      tab: "servers",
-      items,
-      total,
-      page,
-      hasMore: page * limit < total,
-      meta,
+      success: true,
+      enrichedCount: data.enrichedCount,
+      totalServers: data.servers.length,
+      resourceCount: Object.keys(data.resourceMap).length,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
