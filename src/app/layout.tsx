@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
-// Force dynamic rendering for all pages
-export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 import { JetBrains_Mono } from "next/font/google";
 import { QueryProvider } from "@/components/QueryProvider";
 import "./globals.css";
