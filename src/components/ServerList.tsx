@@ -5,9 +5,9 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import type { ServerItem, SortDirection, PaginatedResponse } from "@/lib/types";
 import { SearchBar } from "./SearchBar";
 import { SortButton } from "./SortButton";
-import { Users, Maximize, Type, Package, Globe, Gamepad2, Tag, Server } from "lucide-react";
+import { Users, Maximize, Type, Globe, Gamepad2, Tag, Server } from "lucide-react";
 
-type SortField = "clients" | "svMaxclients" | "hostname" | "resources";
+type SortField = "clients" | "svMaxclients" | "hostname";
 
 interface ServerListProps {
   onSelectServer?: (id: string) => void;
@@ -19,17 +19,20 @@ async function fetchServers(
   search: string,
   sortField: SortField,
   sortDir: SortDirection
-): Promise<PaginatedResponse<ServerItem>> {
+): Promise<PaginatedResponse> {
   const params = new URLSearchParams({
-    tab: "servers",
     page: String(page),
     limit: "30",
     sort: sortField,
     dir: sortDir,
   });
   if (search) params.set("search", search);
+
   const res = await fetch(`/api/servers?${params}`);
-  if (!res.ok) throw new Error("Failed to load servers");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to load servers");
+  }
   return res.json();
 }
 
@@ -46,11 +49,14 @@ export function ServerList({ onSelectServer, selectedServerId }: ServerListProps
     hasNextPage,
     isFetchingNextPage,
     isLoading,
+    error,
   } = useInfiniteQuery({
     queryKey: ["servers", search, sortField, sortDir],
     queryFn: ({ pageParam }) => fetchServers(pageParam, search, sortField, sortDir),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+    retry: 2,
+    retryDelay: 1000,
   });
 
   const items = data?.pages.flatMap((p) => p.items) ?? [];
@@ -123,13 +129,6 @@ export function ServerList({ onSelectServer, selectedServerId }: ServerListProps
               onClick={() => toggleSort("hostname")}
               icon={<Type className="w-3 h-3" />}
             />
-            <SortButton
-              label="Resources"
-              active={sortField === "resources"}
-              direction={sortDir}
-              onClick={() => toggleSort("resources")}
-              icon={<Package className="w-3 h-3" />}
-            />
           </div>
         </div>
       </div>
@@ -142,8 +141,18 @@ export function ServerList({ onSelectServer, selectedServerId }: ServerListProps
         </div>
       )}
 
+      {/* Error state */}
+      {error && (
+        <div className="py-20 text-center">
+          <p className="text-accent font-medium text-sm">Failed to load servers</p>
+          <p className="text-muted text-xs mt-1">
+            {(error as Error)?.message ?? "Unknown error"}
+          </p>
+        </div>
+      )}
+
       {/* Server cards */}
-      {!isLoading && (
+      {!isLoading && !error && (
         <div className="space-y-2">
           {items.map((server, idx) => (
             <ServerCard
@@ -158,11 +167,11 @@ export function ServerList({ onSelectServer, selectedServerId }: ServerListProps
 
       {hasNextPage && (
         <div ref={loaderRef} className="py-10 text-center text-muted text-xs">
-          {isFetchingNextPage ? "Loading..." : ""}
+          {isFetchingNextPage ? "Loading more..." : ""}
         </div>
       )}
 
-      {!isLoading && items.length === 0 && (
+      {!isLoading && !error && items.length === 0 && (
         <div className="py-20 text-center text-muted text-sm">
           No servers found.
         </div>
@@ -199,6 +208,7 @@ function ServerCard({
         {/* Banner thumbnail */}
         {server.bannerDetail && !imgError ? (
           <div className="w-16 h-16 shrink-0 bg-background overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={server.bannerDetail}
               alt=""
@@ -241,17 +251,11 @@ function ServerCard({
           </div>
 
           {/* Meta row + tags */}
-          <div className="flex items-center gap-3 mt-2 text-[11px] text-muted">
+          <div className="flex items-center gap-3 mt-2 text-[11px] text-muted flex-wrap">
             {server.locale && (
               <span className="flex items-center gap-1 uppercase">
                 <Globe className="w-3 h-3" />
                 {server.locale}
-              </span>
-            )}
-            {server.resourceCount > 0 && (
-              <span className="flex items-center gap-1">
-                <Package className="w-3 h-3" />
-                {server.resourceCount}
               </span>
             )}
             {server.gametype && (
