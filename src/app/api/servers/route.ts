@@ -41,7 +41,8 @@ function buildResourceMap(servers: ServerInfo[]): Record<string, ResourceStats> 
   return map;
 }
 
-const isProduction = process.env.NODE_ENV === 'production';
+// Edge Runtime + Cloudflare = skip enrichment (timeout issues)
+const isProduction = process.env.NODE_ENV === 'production' || typeof process.env.CF_PAGES !== 'undefined';
 
 async function ensureData(): Promise<void> {
   const now = Date.now();
