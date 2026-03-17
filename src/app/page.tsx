@@ -1,65 +1,231 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useCallback, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Meta } from "@/lib/types";
+import { ServerList } from "@/components/ServerList";
+import { ServerDetail } from "@/components/ServerDetail";
+import { ResourceList } from "@/components/ResourceList";
+import { ResourceDetail } from "@/components/ResourceDetail";
+import { Server, Package, Users, RefreshCw } from "lucide-react";
+
+type Tab = "servers" | "resources";
+
+async function fetchMeta(): Promise<Meta> {
+  const res = await fetch("/api/servers?meta=true");
+  if (!res.ok) throw new Error("Failed to load data");
+  return res.json();
+}
 
 export default function Home() {
+  const queryClient = useQueryClient();
+  const [tab, setTab] = useState<Tab>("servers");
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+  const [selectedResourceName, setSelectedResourceName] = useState<string | null>(null);
+
+  const {
+    data: meta,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["meta"],
+    queryFn: fetchMeta,
+  });
+
+  const hasSelection =
+    (tab === "servers" && selectedServerId !== null) ||
+    (tab === "resources" && selectedResourceName !== null);
+
+  // Close detail panels when switching tabs
+  useEffect(() => {
+    setSelectedServerId(null);
+    setSelectedResourceName(null);
+  }, [tab]);
+
+  const handleCloseDetail = useCallback(() => {
+    setSelectedServerId(null);
+    setSelectedResourceName(null);
+  }, []);
+
+  const handleSelectServer = useCallback((id: string) => {
+    setSelectedServerId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const handleSelectResource = useCallback((name: string) => {
+    setSelectedResourceName((prev) => (prev === name ? null : name));
+  }, []);
+
+  const expandStyle = { width: "92%", marginLeft: "4%", marginRight: "4%" };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen flex flex-col">
+      {/* Header */}
+      <header className="border-b border-border bg-surface">
+        <div
+          className="w-[60%] min-w-[600px] mx-auto py-5 transition-all duration-300 ease-in-out"
+          style={hasSelection ? expandStyle : undefined}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-baseline gap-3">
+              <h1 className="text-2xl font-bold text-foreground tracking-tight">
+                RedM<span className="text-accent">Insights</span>
+              </h1>
+              <span className="text-xs text-muted uppercase tracking-widest">
+                Server & Resource Analytics
+              </span>
+            </div>
+            {meta && (
+              <div className="flex items-center gap-8">
+                <Stat label="Servers" value={meta.serverCount} icon={<Server className="w-3.5 h-3.5" />} />
+                <Stat label="Resources" value={meta.resourceCount} icon={<Package className="w-3.5 h-3.5" />} />
+                <Stat label="Players Online" value={meta.totalPlayers} icon={<Users className="w-3.5 h-3.5" />} />
+              </div>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </header>
+
+      {/* Tabs */}
+      <div className="border-b border-border bg-surface/50">
+        <div
+          className="w-[60%] min-w-[600px] mx-auto flex transition-all duration-300 ease-in-out"
+          style={hasSelection ? expandStyle : undefined}
+        >
+          <TabButton
+            active={tab === "servers"}
+            onClick={() => setTab("servers")}
+            icon={<Server className="w-3.5 h-3.5" />}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            Servers
+          </TabButton>
+          <TabButton
+            active={tab === "resources"}
+            onClick={() => setTab("resources")}
+            icon={<Package className="w-3.5 h-3.5" />}
+          >
+            Resources
+          </TabButton>
+        </div>
+      </div>
+
+      {/* Content */}
+      <main className="flex-1">
+        <div
+          className="mx-auto py-6 transition-all duration-300 ease-in-out flex gap-6"
+          style={
+            hasSelection
+              ? expandStyle
+              : { width: "60%", minWidth: "600px" }
+          }
+        >
+          {/* Main content area */}
+          <div className={`transition-all duration-300 ease-in-out ${hasSelection ? "flex-1 min-w-0" : "w-full"}`}>
+            {isLoading && (
+              <div className="py-32 text-center">
+                <div className="inline-block w-5 h-5 border-2 border-border border-t-accent animate-spin" />
+                <p className="text-muted mt-4 text-sm">
+                  Loading data...
+                </p>
+              </div>
+            )}
+
+            {error && (
+              <div className="py-32 text-center">
+                <p className="text-accent font-medium">Failed to load data</p>
+                <p className="text-muted text-sm mt-2">
+                  {error instanceof Error ? error.message : "Unknown error"}
+                </p>
+                <button
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ["meta"] })}
+                  className="mt-4 px-5 py-2 bg-accent text-white text-sm hover:bg-accent-hover transition-colors flex items-center gap-2 mx-auto"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {!isLoading && !error && (
+              <>
+                {tab === "servers" && (
+                  <ServerList
+                    onSelectServer={handleSelectServer}
+                    selectedServerId={selectedServerId}
+                  />
+                )}
+                {tab === "resources" && (
+                  <ResourceList
+                    onSelectResource={handleSelectResource}
+                    selectedResourceName={selectedResourceName}
+                    meta={meta}
+                  />
+                )}
+                {meta && (
+                  <div className="mt-8 pt-4 border-t border-border text-xs text-muted text-center">
+                    Cached {new Date(meta.cachedAt).toLocaleString()} — Refreshes
+                    every 24h — Resource data from {meta.enrichedCount}/
+                    {meta.serverCount} servers
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Detail sidebar */}
+          {tab === "servers" && (
+            <ServerDetail
+              serverId={selectedServerId}
+              onClose={handleCloseDetail}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          )}
+          {tab === "resources" && (
+            <ResourceDetail
+              resourceName={selectedResourceName}
+              onClose={handleCloseDetail}
+            />
+          )}
         </div>
       </main>
     </div>
+  );
+}
+
+function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+  return (
+    <div className="text-right">
+      <div className="flex items-center justify-end gap-1 text-[11px] text-muted uppercase tracking-wider">
+        {icon}
+        {label}
+      </div>
+      <div className="font-mono font-bold text-foreground text-sm">
+        {value.toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+  icon,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+        active
+          ? "border-accent text-accent"
+          : "border-transparent text-muted hover:text-foreground"
+      }`}
+    >
+      {icon}
+      {children}
+    </button>
   );
 }
