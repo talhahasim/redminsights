@@ -170,7 +170,7 @@ export async function enrichAllServers(
   console.log(`[enrich] Starting FULL enrichment of ${total} servers (this will take 30-40 min)`);
 
   let enrichedCount = 0;
-  let failedIds: string[] = [];
+  const failedIds: string[] = [];
 
   // Very conservative: 4 concurrent, 400ms delay
   const concurrency = 4;

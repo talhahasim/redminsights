@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
-import { Geist_Mono } from "next/font/google";
+
+// Force dynamic rendering for all pages
+export const dynamic = 'force-dynamic';
+import { JetBrains_Mono } from "next/font/google";
 import { QueryProvider } from "@/components/QueryProvider";
 import "./globals.css";
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
 });
 
@@ -20,7 +23,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistMono.variable} antialiased`}>
+      <body className={`${jetbrainsMono.variable} antialiased`}>
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>

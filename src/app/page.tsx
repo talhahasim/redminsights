@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Meta } from "@/lib/types";
 import { ServerList } from "@/components/ServerList";
@@ -36,11 +36,12 @@ export default function Home() {
     (tab === "servers" && selectedServerId !== null) ||
     (tab === "resources" && selectedResourceName !== null);
 
-  // Close detail panels when switching tabs
-  useEffect(() => {
+  // Handle tab change - clear selections
+  const handleTabChange = useCallback((newTab: Tab) => {
+    setTab(newTab);
     setSelectedServerId(null);
     setSelectedResourceName(null);
-  }, [tab]);
+  }, []);
 
   const handleCloseDetail = useCallback(() => {
     setSelectedServerId(null);
@@ -93,14 +94,14 @@ export default function Home() {
         >
           <TabButton
             active={tab === "servers"}
-            onClick={() => setTab("servers")}
+            onClick={() => handleTabChange("servers")}
             icon={<Server className="w-3.5 h-3.5" />}
           >
             Servers
           </TabButton>
           <TabButton
             active={tab === "resources"}
-            onClick={() => setTab("resources")}
+            onClick={() => handleTabChange("resources")}
             icon={<Package className="w-3.5 h-3.5" />}
           >
             Resources
@@ -129,11 +130,11 @@ export default function Home() {
               </div>
             )}
 
-            {error && (
+            {error !== null && (
               <div className="py-32 text-center">
                 <p className="text-accent font-medium">Failed to load data</p>
                 <p className="text-muted text-sm mt-2">
-                  {error instanceof Error ? error.message : "Unknown error"}
+                  {(error as Error)?.message ?? "Unknown error"}
                 </p>
                 <button
                   onClick={() => queryClient.invalidateQueries({ queryKey: ["meta"] })}

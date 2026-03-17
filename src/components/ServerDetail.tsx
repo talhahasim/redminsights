@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ServerDetailItem } from "@/lib/types";
 import {
@@ -26,8 +26,31 @@ async function fetchServer(id: string): Promise<ServerDetailItem> {
   return res.json();
 }
 
-export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
+function ServerImage({ src }: { src: string }) {
   const [imgError, setImgError] = useState(false);
+
+  if (imgError) {
+    return (
+      <div className="w-full aspect-[16/9] bg-background flex items-center justify-center">
+        <Server className="w-8 h-8 text-muted" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full aspect-[16/9] bg-background overflow-hidden">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        className="w-full h-full object-cover"
+        onError={() => setImgError(true)}
+      />
+    </div>
+  );
+}
+
+export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
   const visible = serverId !== null;
 
   const {
@@ -40,11 +63,6 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
     queryFn: () => fetchServer(serverId!),
     enabled: !!serverId,
   });
-
-  // Reset image error on server change
-  useEffect(() => {
-    setImgError(false);
-  }, [serverId]);
 
   // Escape key closes the panel
   useEffect(() => {
@@ -106,16 +124,9 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
 
         {!isLoading && !error && server && (
           <div className="p-4 space-y-5">
-            {/* Banner */}
-            {server.bannerDetail && !imgError ? (
-              <div className="w-full aspect-[16/9] bg-background overflow-hidden">
-                <img
-                  src={server.bannerDetail}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  onError={() => setImgError(true)}
-                />
-              </div>
+            {/* Banner - key forces remount on server change */}
+            {server.bannerDetail ? (
+              <ServerImage key={serverId} src={server.bannerDetail} />
             ) : (
               <div className="w-full aspect-[16/9] bg-background/50 flex items-center justify-center">
                 <Server className="w-10 h-10 text-muted/20" />
