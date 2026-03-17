@@ -1,5 +1,3 @@
-import Link from 'next/link';
-
 export const runtime = 'edge';
 
 export default function NotFound() {
@@ -18,7 +16,7 @@ export default function NotFound() {
     >
       <h2 style={{ fontSize: '4rem', margin: 0, color: '#b91c1c' }}>404</h2>
       <p style={{ color: '#737373', marginTop: '0.5rem' }}>Page not found</p>
-      <Link
+      <a
         href="/"
         style={{
           marginTop: '1.5rem',
@@ -29,7 +27,7 @@ export default function NotFound() {
         }}
       >
         Go Home
-      </Link>
+      </a>
     </div>
   );
 }

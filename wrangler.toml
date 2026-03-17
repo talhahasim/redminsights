@@ -1,7 +1,9 @@
 name = "redminsights"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
 
-[[kv_namespaces]]
-binding = "CACHE"
-id = "YOUR_KV_NAMESPACE_ID"
+# KV namespace - create one in Cloudflare dashboard and replace the ID
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "YOUR_ACTUAL_KV_ID"
