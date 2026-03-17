@@ -38,6 +38,8 @@ function buildResourceMap(servers: ServerInfo[]): Record<string, ResourceStats> 
   return map;
 }
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 async function ensureData(): Promise<void> {
   const now = Date.now();
 
@@ -55,17 +57,22 @@ async function ensureData(): Promise<void> {
     try {
       console.log("[ensureData] Fetching servers...");
       const servers = await fetchAndDecodeServers();
-      console.log(`[ensureData] Got ${servers.length} servers, starting full enrichment...`);
+      console.log(`[ensureData] Got ${servers.length} servers`);
 
-      // Enrich ALL servers (blocking - takes 5-10 minutes but gives accurate data)
-      await enrichAllServers(servers);
+      // In production (Vercel), skip enrichment due to timeout limits
+      // In development, do full enrichment
+      if (!isProduction) {
+        console.log("[ensureData] Starting full enrichment...");
+        await enrichAllServers(servers);
+      } else {
+        console.log("[ensureData] Production mode - skipping enrichment (timeout limit)");
+      }
 
       const enrichedCount = servers.filter((s) => s.resources.length > 0).length;
       const resourceMap = buildResourceMap(servers);
       const totalPlayers = servers.reduce((sum, s) => sum + s.clients, 0);
 
       console.log(`[ensureData] Final: ${enrichedCount}/${servers.length} servers enriched`);
-      console.log(`[ensureData] Resources: ${Object.keys(resourceMap).length}`);
       console.log(`[ensureData] Failures:`, getFailureStats());
 
       cache = {
