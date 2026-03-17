@@ -7,6 +7,9 @@ import {
   type ServerInfo,
 } from "@/lib/decoder";
 
+// Required for Cloudflare Pages
+export const runtime = "edge";
+
 interface ResourceStats {
   count: number;
   players: number;
