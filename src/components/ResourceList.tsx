@@ -145,7 +145,7 @@ export function ResourceList({ onSelectResource, selectedResourceName, meta }: R
               {meta && (
                 <span>
                   {" "}
-                  across {meta.serverCount.toLocaleString()}/{meta.serverCount.toLocaleString()} servers
+                  across {meta.serversWithResources.toLocaleString()}/{meta.serverCount.toLocaleString()} servers
                 </span>
               )}
             </span>
@@ -238,7 +238,7 @@ export function ResourceList({ onSelectResource, selectedResourceName, meta }: R
                     </span>
                     <span className="text-xs text-muted/60">
                       {meta
-                        ? `${Math.round((resource.count / meta.serverCount) * 100)}%`
+                        ? `${Math.round((resource.count / meta.serversWithResources) * 100)}%`
                         : ""}
                     </span>
                   </div>

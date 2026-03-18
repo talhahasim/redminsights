@@ -40,6 +40,7 @@ export interface ResourceDetailItem {
 
 export interface Meta {
   serverCount: number;
+  serversWithResources: number;
   resourceCount: number;
   totalPlayers: number;
   fetchTime?: number;
