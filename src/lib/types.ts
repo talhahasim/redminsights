@@ -1,5 +1,4 @@
 export interface ServerItem {
-  resourceCount?: number;
   id: string;
   hostname: string;
   clients: number;
@@ -11,6 +10,10 @@ export interface ServerItem {
   tags: string;
   locale: string;
   bannerDetail: string;
+  resourceCount: number;
+}
+
+export interface ServerDetailItem extends ServerItem {
   resources: string[];
 }
 
@@ -43,24 +46,6 @@ export interface Meta {
   cachedAt: string;
 }
 
-export interface ServerPaginatedResponse {
-  tab: "servers";
-  items: ServerItem[];
-  total: number;
-  page: number;
-  hasMore: boolean;
-  meta: Meta;
-}
-
-export interface ResourcePaginatedResponse {
-  tab: "resources";
-  items: ResourceItem[];
-  total: number;
-  page: number;
-  hasMore: boolean;
-  meta: Meta;
-}
-
 export type PaginatedResponse<T = ServerItem | ResourceItem> = {
   tab: string;
   items: T[];
@@ -71,4 +56,3 @@ export type PaginatedResponse<T = ServerItem | ResourceItem> = {
 };
 
 export type SortDirection = "asc" | "desc";
-export interface ServerDetailItem extends ServerItem { resources: string[]; }
