@@ -5,20 +5,23 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Meta } from "@/lib/types";
 import { ServerList } from "@/components/ServerList";
 import { ServerDetail } from "@/components/ServerDetail";
-import { Server, Users, RefreshCw } from "lucide-react";
+import { ResourceList } from "@/components/ResourceList";
+import { ResourceDetail } from "@/components/ResourceDetail";
+import { Server, Package, Users, RefreshCw } from "lucide-react";
+
+type Tab = "servers" | "resources";
 
 async function fetchMeta(): Promise<Meta> {
   const res = await fetch("/api/servers?meta=true");
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Failed to load data");
-  }
+  if (!res.ok) throw new Error("Failed to load data");
   return res.json();
 }
 
 export default function Home() {
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState<Tab>("servers");
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+  const [selectedResourceName, setSelectedResourceName] = useState<string | null>(null);
 
   const {
     data: meta,
@@ -27,18 +30,30 @@ export default function Home() {
   } = useQuery({
     queryKey: ["meta"],
     queryFn: fetchMeta,
-    retry: 2,
-    retryDelay: 1000,
   });
 
-  const hasSelection = selectedServerId !== null;
+  const hasSelection =
+    (tab === "servers" && selectedServerId !== null) ||
+    (tab === "resources" && selectedResourceName !== null);
+
+  // Handle tab change - clear selections
+  const handleTabChange = useCallback((newTab: Tab) => {
+    setTab(newTab);
+    setSelectedServerId(null);
+    setSelectedResourceName(null);
+  }, []);
 
   const handleCloseDetail = useCallback(() => {
     setSelectedServerId(null);
+    setSelectedResourceName(null);
   }, []);
 
   const handleSelectServer = useCallback((id: string) => {
     setSelectedServerId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const handleSelectResource = useCallback((name: string) => {
+    setSelectedResourceName((prev) => (prev === name ? null : name));
   }, []);
 
   const expandStyle = { width: "92%", marginLeft: "4%", marginRight: "4%" };
@@ -57,18 +72,42 @@ export default function Home() {
                 RedM<span className="text-accent">Insights</span>
               </h1>
               <span className="text-xs text-muted uppercase tracking-widest">
-                Server Analytics
+                Server & Resource Analytics
               </span>
             </div>
             {meta && (
               <div className="flex items-center gap-8">
                 <Stat label="Servers" value={meta.serverCount} icon={<Server className="w-3.5 h-3.5" />} />
+                <Stat label="Resources" value={meta.resourceCount} icon={<Package className="w-3.5 h-3.5" />} />
                 <Stat label="Players Online" value={meta.totalPlayers} icon={<Users className="w-3.5 h-3.5" />} />
               </div>
             )}
           </div>
         </div>
       </header>
+
+      {/* Tabs */}
+      <div className="border-b border-border bg-surface/50">
+        <div
+          className="w-[60%] min-w-[600px] mx-auto flex transition-all duration-300 ease-in-out"
+          style={hasSelection ? expandStyle : undefined}
+        >
+          <TabButton
+            active={tab === "servers"}
+            onClick={() => handleTabChange("servers")}
+            icon={<Server className="w-3.5 h-3.5" />}
+          >
+            Servers
+          </TabButton>
+          <TabButton
+            active={tab === "resources"}
+            onClick={() => handleTabChange("resources")}
+            icon={<Package className="w-3.5 h-3.5" />}
+          >
+            Resources
+          </TabButton>
+        </div>
+      </div>
 
       {/* Content */}
       <main className="flex-1">
@@ -86,7 +125,7 @@ export default function Home() {
               <div className="py-32 text-center">
                 <div className="inline-block w-5 h-5 border-2 border-border border-t-accent animate-spin" />
                 <p className="text-muted mt-4 text-sm">
-                  Loading servers...
+                  Loading data...
                 </p>
               </div>
             )}
@@ -109,14 +148,24 @@ export default function Home() {
 
             {!isLoading && !error && (
               <>
-                <ServerList
-                  onSelectServer={handleSelectServer}
-                  selectedServerId={selectedServerId}
-                />
+                {tab === "servers" && (
+                  <ServerList
+                    onSelectServer={handleSelectServer}
+                    selectedServerId={selectedServerId}
+                  />
+                )}
+                {tab === "resources" && (
+                  <ResourceList
+                    onSelectResource={handleSelectResource}
+                    selectedResourceName={selectedResourceName}
+                    meta={meta}
+                  />
+                )}
                 {meta && (
                   <div className="mt-8 pt-4 border-t border-border text-xs text-muted text-center">
-                    Last updated: {new Date(meta.cachedAt).toLocaleString()}
-                    {meta.fetchTime && ` (${meta.fetchTime}ms)`}
+                    Cached {new Date(meta.cachedAt).toLocaleString()} — Refreshes
+                    every 24h — Resource data from {meta.serverCount}/
+                    {meta.serverCount} servers
                   </div>
                 )}
               </>
@@ -124,10 +173,18 @@ export default function Home() {
           </div>
 
           {/* Detail sidebar */}
-          <ServerDetail
-            serverId={selectedServerId}
-            onClose={handleCloseDetail}
-          />
+          {tab === "servers" && (
+            <ServerDetail
+              serverId={selectedServerId}
+              onClose={handleCloseDetail}
+            />
+          )}
+          {tab === "resources" && (
+            <ResourceDetail
+              resourceName={selectedResourceName}
+              onClose={handleCloseDetail}
+            />
+          )}
         </div>
       </main>
     </div>
@@ -145,5 +202,31 @@ function Stat({ label, value, icon }: { label: string; value: number; icon: Reac
         {value.toLocaleString()}
       </div>
     </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+  icon,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+        active
+          ? "border-accent text-accent"
+          : "border-transparent text-muted hover:text-foreground"
+      }`}
+    >
+      {icon}
+      {children}
+    </button>
   );
 }
