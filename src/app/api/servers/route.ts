@@ -1,17 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "edge";
+// Allow up to 60s for initial data fetch (Vercel Hobby max)
+export const maxDuration = 60;
 
-// In-memory cache for server data
+// In-memory cache (persists across requests in Vercel serverless)
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+interface ResourceStats {
+  count: number;
+  players: number;
+}
+
 interface CacheEntry {
   servers: ServerInfo[];
   resourceMap: Record<string, ResourceStats>;
-  meta: { serverCount: number; serversWithResources: number; resourceCount: number; totalPlayers: number; cachedAt: string };
+  meta: {
+    serverCount: number;
+    serversWithResources: number;
+    resourceCount: number;
+    totalPlayers: number;
+    totalBatches: number;
+    cachedAt: string;
+  };
   timestamp: number;
 }
 
 let serverCache: CacheEntry | null = null;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 function isCacheValid(): boolean {
   return serverCache !== null && Date.now() - serverCache.timestamp < CACHE_TTL;
@@ -29,13 +43,8 @@ interface ServerInfo {
   tags: string;
   locale: string;
   bannerDetail: string;
+  addr?: string;
   resources: string[];
-  addr?: string; // IP:port for fetching resources
-}
-
-interface ResourceStats {
-  count: number;
-  players: number;
 }
 
 function stripColors(str: string): string {
@@ -56,7 +65,6 @@ function readVarint(buffer: Uint8Array, offset: number): [number, number] {
     shift += 7;
   }
 
-  // Handle potential overflow for 32-bit values
   return [result >>> 0, pos];
 }
 
@@ -77,31 +85,26 @@ function parseServerEntry(data: Uint8Array): { endPoint: string; serverData: Rec
       const wireType = tag & 0x7;
 
       if (wireType === 2) {
-        // Length-delimited (string, bytes, or embedded message)
         const [length, lenOffset] = readVarint(data, offset);
         offset = lenOffset;
 
         if (offset + length > data.length) break;
 
-        const fieldData = data.slice(offset, offset + length);
+        const fieldData = data.subarray(offset, offset + length);
         offset += length;
 
         if (fieldNumber === 1) {
-          // EndPoint
           endPoint = new TextDecoder().decode(fieldData);
         } else if (fieldNumber === 2) {
-          // Data (embedded message)
           parseDataMessage(fieldData, serverData);
         }
       } else if (wireType === 0) {
-        // Varint
         const [value, valOffset] = readVarint(data, offset);
         offset = valOffset;
 
         if (fieldNumber === 3) serverData.clients = value;
         if (fieldNumber === 4) serverData.svMaxclients = value;
       } else {
-        // Skip unknown wire types
         break;
       }
     }
@@ -137,22 +140,20 @@ function parseDataMessage(data: Uint8Array, serverData: Record<string, unknown>)
 
       if (offset + length > data.length) break;
 
-      const fieldData = data.slice(offset, offset + length);
+      const fieldData = data.subarray(offset, offset + length);
       offset += length;
 
       const text = new TextDecoder().decode(fieldData);
 
       switch (fieldNumber) {
-        case 4: serverData.hostname = text; break;  // hostname is field 4
+        case 4: serverData.hostname = text; break;
         case 5: serverData.gametype = text; break;
         case 6: serverData.mapname = text; break;
         case 9: serverData.server = text; break;
         case 12:
-          // vars field (key-value pair)
           parseVarsField(fieldData, vars);
           break;
         case 18:
-          // addr field
           serverData.addr = text;
           break;
       }
@@ -163,13 +164,11 @@ function parseDataMessage(data: Uint8Array, serverData: Record<string, unknown>)
       switch (fieldNumber) {
         case 1: serverData.clients = value; break;
         case 11:
-          // svMaxclients might be signed
           const signed = decodeSignedVarint(value);
           serverData.svMaxclients = signed > 0 ? signed : value;
           break;
       }
     } else {
-      // Skip other wire types
       if (wireType === 5) offset += 4;
       else if (wireType === 1) offset += 8;
       else break;
@@ -200,7 +199,7 @@ function parseVarsField(data: Uint8Array, vars: Record<string, string>): void {
 
       if (offset + length > data.length) break;
 
-      const fieldData = data.slice(offset, offset + length);
+      const fieldData = data.subarray(offset, offset + length);
       offset += length;
 
       const text = new TextDecoder().decode(fieldData);
@@ -218,7 +217,7 @@ function parseVarsField(data: Uint8Array, vars: Record<string, string>): void {
 // Fetch servers from CFX stream API (protobuf format)
 async function fetchServers(): Promise<ServerInfo[]> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90000);
+  const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
     const timestamp = Date.now();
@@ -246,7 +245,6 @@ async function fetchServers(): Promise<ServerInfo[]> {
     let offset = 0;
 
     while (offset < data.length) {
-      // Read 4-byte length prefix (little-endian)
       if (offset + 4 > data.length) break;
 
       const length =
@@ -259,7 +257,7 @@ async function fetchServers(): Promise<ServerInfo[]> {
 
       if (length <= 0 || length > 100000 || offset + length > data.length) break;
 
-      const entryData = data.slice(offset, offset + length);
+      const entryData = data.subarray(offset, offset + length);
       offset += length;
 
       const entry = parseServerEntry(entryData);
@@ -268,13 +266,11 @@ async function fetchServers(): Promise<ServerInfo[]> {
       const { endPoint, serverData } = entry;
       const vars = (serverData.vars || {}) as Record<string, string>;
 
-      // Filter for RedM (rdr3) servers only
       if (vars.gamename !== "rdr3") continue;
 
-      // Sanitize svMaxclients (can be -1 or overflow values)
       let maxClients = Number(serverData.svMaxclients) || 0;
       if (maxClients < 0 || maxClients > 10000) {
-        maxClients = 0; // Invalid value
+        maxClients = 0;
       }
 
       const clients = Number(serverData.clients) || 0;
@@ -283,7 +279,7 @@ async function fetchServers(): Promise<ServerInfo[]> {
         id: endPoint,
         hostname: stripColors(String(serverData.hostname || "")),
         clients,
-        svMaxclients: maxClients || clients, // Fallback to clients if invalid
+        svMaxclients: maxClients || clients,
         gametype: String(serverData.gametype || ""),
         mapname: String(serverData.mapname || ""),
         projectName: stripColors(vars.sv_projectName || ""),
@@ -291,8 +287,8 @@ async function fetchServers(): Promise<ServerInfo[]> {
         tags: vars.tags || "",
         locale: vars.locale || "",
         bannerDetail: vars.banner_detail || "",
-        resources: [],
         addr: String(serverData.addr || ""),
+        resources: [],
       });
     }
 
@@ -308,7 +304,7 @@ async function fetchServers(): Promise<ServerInfo[]> {
 async function fetchServerResources(addr: string): Promise<string[]> {
   try {
     const res = await fetch(`http://${addr}/info.json`, {
-      signal: AbortSignal.timeout(5000), // 5s timeout
+      signal: AbortSignal.timeout(3000),
       headers: { "User-Agent": "RedMInsights/1.0" },
     });
     if (res.ok) {
@@ -323,39 +319,59 @@ async function fetchServerResources(addr: string): Promise<string[]> {
   return [];
 }
 
-// Fetch resources from top N servers in parallel batches
-async function fetchResourcesFromTopServers(servers: ServerInfo[], count: number): Promise<void> {
-  const topServers = servers
-    .filter((s) => s.addr)
-    .sort((a, b) => b.clients - a.clients)
-    .slice(0, count);
+const ENRICH_BATCH_SIZE = 30;
 
-  const batchSize = 100; // Parallel requests per batch
-  for (let i = 0; i < topServers.length; i += batchSize) {
-    const batch = topServers.slice(i, i + batchSize);
-    const results = await Promise.all(
-      batch.map(async (server) => {
-        const resources = await fetchServerResources(server.addr!);
-        return { server, resources };
-      })
-    );
-    for (const { server, resources } of results) {
-      server.resources = resources;
-    }
-  }
+// Get list of servers eligible for resource fetching
+function getEligibleServers(servers: ServerInfo[]): ServerInfo[] {
+  return servers.filter((s) => s.addr && !s.addr.startsWith('https://'));
 }
 
-// Build resource map from servers
-function buildResourceMap(servers: ServerInfo[]): Record<string, ResourceStats> {
-  const map: Record<string, ResourceStats> = {};
-  for (const server of servers) {
-    for (const resource of server.resources) {
-      if (!map[resource]) map[resource] = { count: 0, players: 0 };
-      map[resource].count += 1;
-      map[resource].players += server.clients;
+// Fetch resources for a batch of servers
+async function enrichBatch(servers: ServerInfo[], batchIndex: number): Promise<number> {
+  const eligible = getEligibleServers(servers);
+  const start = batchIndex * ENRICH_BATCH_SIZE;
+  if (start >= eligible.length) return -1; // All done
+
+  const batch = eligible.slice(start, start + ENRICH_BATCH_SIZE);
+  const results = await Promise.allSettled(
+    batch.map(async (server) => {
+      const resources = await fetchServerResources(server.addr!);
+      return { server, resources };
+    })
+  );
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      result.value.server.resources = result.value.resources;
     }
   }
-  return map;
+
+  const nextStart = start + ENRICH_BATCH_SIZE;
+  return nextStart >= eligible.length ? -1 : batchIndex + 1;
+}
+
+// Rebuild resource map and meta from current server data
+function rebuildCache(): void {
+  if (!serverCache) return;
+  const { servers } = serverCache;
+  const resourceMap: Record<string, ResourceStats> = {};
+  for (const server of servers) {
+    for (const resource of server.resources) {
+      if (!resourceMap[resource]) resourceMap[resource] = { count: 0, players: 0 };
+      resourceMap[resource].count += 1;
+      resourceMap[resource].players += server.clients;
+    }
+  }
+  const totalPlayers = servers.reduce((sum, s) => sum + s.clients, 0);
+  const serversWithResources = servers.filter((s) => s.resources.length > 0).length;
+  serverCache.resourceMap = resourceMap;
+  serverCache.meta = {
+    serverCount: servers.length,
+    serversWithResources,
+    resourceCount: Object.keys(resourceMap).length,
+    totalPlayers,
+    totalBatches: serverCache.meta.totalBatches,
+    cachedAt: serverCache.meta.cachedAt,
+  };
 }
 
 async function getCachedData(): Promise<CacheEntry | null> {
@@ -364,21 +380,18 @@ async function getCachedData(): Promise<CacheEntry | null> {
   const servers = await fetchServers();
   if (servers.length === 0) return null;
 
-  await fetchResourcesFromTopServers(servers, servers.length);
-
-  const resourceMap = buildResourceMap(servers);
   const totalPlayers = servers.reduce((sum, s) => sum + s.clients, 0);
-
-  const serversWithResources = servers.filter((s) => s.resources.length > 0).length;
+  const eligible = getEligibleServers(servers);
 
   serverCache = {
     servers,
-    resourceMap,
+    resourceMap: {},
     meta: {
       serverCount: servers.length,
-      serversWithResources,
-      resourceCount: Object.keys(resourceMap).length,
+      serversWithResources: 0,
+      resourceCount: 0,
       totalPlayers,
+      totalBatches: Math.ceil(eligible.length / ENRICH_BATCH_SIZE),
       cachedAt: new Date().toISOString(),
     },
     timestamp: Date.now(),
@@ -409,6 +422,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(meta);
     }
 
+    // Batch enrich: fetch resources for batch N of servers
+    const batchParam = searchParams.get("batchIndex");
+    if (batchParam !== null) {
+      const batchIndex = parseInt(batchParam);
+      if (isNaN(batchIndex) || batchIndex < 0) {
+        return NextResponse.json({ error: "Invalid batchIndex" }, { status: 400 });
+      }
+      const nextBatch = await enrichBatch(servers, batchIndex);
+      rebuildCache();
+      return NextResponse.json({
+        nextBatchIndex: nextBatch,
+        meta: { ...cached.meta, fetchTime: Date.now() - startTime },
+      });
+    }
+
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
     const limit = all ? 10000 : Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "40")));
     const search = (searchParams.get("search") || "").toLowerCase();
@@ -421,21 +449,11 @@ export async function GET(request: NextRequest) {
       const server = servers.find((s) => s.id === id);
       if (!server) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-      // Try to fetch resources from server's info.json
-      if (server.addr) {
-        try {
-          const infoRes = await fetch(`http://${server.addr}/info.json`, {
-            signal: AbortSignal.timeout(5000),
-            headers: { "User-Agent": "RedMInsights/1.0" },
-          });
-          if (infoRes.ok) {
-            const info = await infoRes.json();
-            if (Array.isArray(info.resources)) {
-              server.resources = info.resources;
-            }
-          }
-        } catch {
-          // Server unreachable, return without resources
+      // Try to fetch fresh resources if not already cached
+      if (server.addr && server.resources.length === 0 && !server.addr.startsWith('https://')) {
+        const resources = await fetchServerResources(server.addr);
+        if (resources.length > 0) {
+          server.resources = resources;
         }
       }
 

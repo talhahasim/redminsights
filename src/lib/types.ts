@@ -10,6 +10,7 @@ export interface ServerItem {
   tags: string;
   locale: string;
   bannerDetail: string;
+  addr?: string;
   resourceCount: number;
 }
 
@@ -43,6 +44,7 @@ export interface Meta {
   serversWithResources: number;
   resourceCount: number;
   totalPlayers: number;
+  totalBatches: number;
   fetchTime?: number;
   cachedAt: string;
 }

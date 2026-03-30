@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 
-export const runtime = 'edge';
 import { JetBrains_Mono } from "next/font/google";
 import { QueryProvider } from "@/components/QueryProvider";
 import "./globals.css";
