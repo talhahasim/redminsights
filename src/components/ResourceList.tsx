@@ -8,6 +8,7 @@ import type {
   PaginatedResponse,
   Meta,
 } from "@/lib/types";
+import { API_BASE } from "@/lib/api";
 import { SearchBar } from "./SearchBar";
 import { SortButton } from "./SortButton";
 import { Server, Users, Hash, Download } from "lucide-react";
@@ -34,7 +35,7 @@ async function fetchResources(
     dir: sortDir,
   });
   if (search) params.set("search", search);
-  const res = await fetch(`/api/servers?${params}`);
+  const res = await fetch(`${API_BASE}?${params}`);
   if (!res.ok) throw new Error("Failed to load resources");
   return res.json();
 }
@@ -110,7 +111,7 @@ export function ResourceList({ onSelectResource, selectedResourceName, meta }: R
         all: "true",
       });
       if (search) params.set("search", search);
-      const res = await fetch(`/api/servers?${params}`);
+      const res = await fetch(`${API_BASE}?${params}`);
       if (!res.ok) return;
       const data: PaginatedResponse<ResourceItem> = await res.json();
       const csv = ["Rank,Name,Server Count"]

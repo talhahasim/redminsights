@@ -1,0 +1,14 @@
+name = "redminsights-api"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+CRAWL_URL = "https://redminsights.vercel.app/api/crawl"
+
+[triggers]
+crons = ["* * * * *"]
+
+[[kv_namespaces]]
+binding = "KV"
+id = "77c3eca271bd4ee8a608e37bbaf1cc08"

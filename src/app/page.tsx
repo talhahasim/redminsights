@@ -1,80 +1,21 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Meta } from "@/lib/types";
+import { API_BASE } from "@/lib/api";
 import { ServerList } from "@/components/ServerList";
 import { ServerDetail } from "@/components/ServerDetail";
 import { ResourceList } from "@/components/ResourceList";
 import { ResourceDetail } from "@/components/ResourceDetail";
-import { Server, Package, Users, RefreshCw, Loader2 } from "lucide-react";
+import { Server, Package, Users, RefreshCw } from "lucide-react";
 
 type Tab = "servers" | "resources";
 
 async function fetchMeta(): Promise<Meta> {
-  const res = await fetch("/api/servers?meta=true");
+  const res = await fetch(`${API_BASE}?meta=true`);
   if (!res.ok) throw new Error("Failed to load data");
   return res.json();
-}
-
-interface BatchEnrichResponse {
-  nextBatchIndex: number;
-  meta: Meta;
-}
-
-function useBatchEnrich(meta: Meta | undefined, queryClient: ReturnType<typeof useQueryClient>) {
-  const [enriching, setEnriching] = useState(false);
-  const [batchesDone, setBatchesDone] = useState(0);
-  const abortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    if (!meta || meta.totalBatches === 0) return;
-
-    // Don't re-enrich if already have resources
-    if (meta.serversWithResources > 0) return;
-
-    let cancelled = false;
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    async function runBatches() {
-      setEnriching(true);
-      setBatchesDone(0);
-      let nextBatch = 0;
-
-      while (nextBatch !== -1 && !cancelled) {
-        try {
-          const res = await fetch(`/api/servers?batchIndex=${nextBatch}`, {
-            signal: controller.signal,
-          });
-          if (!res.ok) break;
-          const data: BatchEnrichResponse = await res.json();
-          nextBatch = data.nextBatchIndex;
-          setBatchesDone((prev) => prev + 1);
-
-          // Update meta with latest resource counts
-          queryClient.setQueryData(["meta"], data.meta);
-
-          // Invalidate resource/server queries so they refetch with new data
-          queryClient.invalidateQueries({ queryKey: ["resources"] });
-          queryClient.invalidateQueries({ queryKey: ["servers"] });
-        } catch {
-          break;
-        }
-      }
-
-      setEnriching(false);
-    }
-
-    runBatches();
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [meta?.cachedAt]); // Re-run when cache refreshes
-
-  return { enriching, batchesDone, totalBatches: meta?.totalBatches ?? 0 };
 }
 
 export default function Home() {
@@ -91,8 +32,6 @@ export default function Home() {
     queryKey: ["meta"],
     queryFn: fetchMeta,
   });
-
-  const { enriching, batchesDone, totalBatches } = useBatchEnrich(meta, queryClient);
 
   const hasSelection =
     (tab === "servers" && selectedServerId !== null) ||
@@ -224,18 +163,8 @@ export default function Home() {
                 )}
                 {meta && (
                   <div className="mt-8 pt-4 border-t border-border text-xs text-muted text-center">
-                    {enriching ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Fetching resources... batch {batchesDone}/{totalBatches}
-                        {' '}({meta.serversWithResources} servers enriched, {meta.resourceCount.toLocaleString()} resources found)
-                      </span>
-                    ) : (
-                      <>
-                        Cached {new Date(meta.cachedAt).toLocaleString()} — Refreshes
-                        every 5 min — Resource data from {meta.serversWithResources} servers
-                      </>
-                    )}
+                    Cached {new Date(meta.cachedAt).toLocaleString()} — Refreshes
+                    every 5 min — {meta.serversWithResources} servers tracked
                   </div>
                 )}
               </>

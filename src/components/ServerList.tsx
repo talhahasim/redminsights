@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import type { ServerItem, SortDirection, PaginatedResponse } from "@/lib/types";
+import { API_BASE } from "@/lib/api";
 import { SearchBar } from "./SearchBar";
 import { SortButton } from "./SortButton";
 import { Users, Maximize, Type, Package, Globe, Gamepad2, Tag, Server } from "lucide-react";
@@ -28,7 +29,7 @@ async function fetchServers(
     dir: sortDir,
   });
   if (search) params.set("search", search);
-  const res = await fetch(`/api/servers?${params}`);
+  const res = await fetch(`${API_BASE}?${params}`);
   if (!res.ok) throw new Error("Failed to load servers");
   return res.json();
 }

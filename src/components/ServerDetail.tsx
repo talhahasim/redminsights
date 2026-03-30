@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ServerDetailItem } from "@/lib/types";
+import { API_BASE } from "@/lib/api";
 import {
   X,
   Users,
@@ -21,7 +22,7 @@ interface ServerDetailProps {
 }
 
 async function fetchServer(id: string): Promise<ServerDetailItem> {
-  const res = await fetch(`/api/servers?id=${encodeURIComponent(id)}`);
+  const res = await fetch(`${API_BASE}?id=${encodeURIComponent(id)}`);
   if (!res.ok) throw new Error("Failed to load server");
   return res.json();
 }

@@ -44,7 +44,6 @@ export interface Meta {
   serversWithResources: number;
   resourceCount: number;
   totalPlayers: number;
-  totalBatches: number;
   fetchTime?: number;
   cachedAt: string;
 }

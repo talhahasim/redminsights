@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ResourceDetailItem } from "@/lib/types";
+import { API_BASE } from "@/lib/api";
 import { X, Users, Server, Package } from "lucide-react";
 
 interface ResourceDetailProps {
@@ -11,7 +12,7 @@ interface ResourceDetailProps {
 }
 
 async function fetchResource(name: string): Promise<ResourceDetailItem> {
-  const res = await fetch(`/api/servers?resource=${encodeURIComponent(name)}`);
+  const res = await fetch(`${API_BASE}?resource=${encodeURIComponent(name)}`);
   if (!res.ok) throw new Error("Failed to load resource");
   return res.json();
 }
