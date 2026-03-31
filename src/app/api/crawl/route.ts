@@ -145,7 +145,7 @@ function parseServerEntry(data: Uint8Array): { endPoint: string; serverData: Rec
 async function fetchServerResources(addr: string): Promise<string[]> {
   try {
     const res = await fetch(`http://${addr}/info.json`, {
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(2000),
       headers: { 'User-Agent': 'RedMInsights/1.0' },
     });
     if (res.ok) {
@@ -226,10 +226,11 @@ export async function GET(): Promise<NextResponse> {
       });
     }
 
-    // 2. Enrich servers with resources (only those with players online + valid addr)
+    // 2. Enrich top 200 servers by player count (must fit in 60s)
     const eligible = servers
       .filter((s) => s.clients > 0 && s.addr && !s.addr.startsWith('https://'))
-      .sort((a, b) => b.clients - a.clients);
+      .sort((a, b) => b.clients - a.clients)
+      .slice(0, 200);
 
     for (let i = 0; i < eligible.length; i += ENRICH_BATCH_SIZE) {
       const batch = eligible.slice(i, i + ENRICH_BATCH_SIZE);
