@@ -15,6 +15,12 @@ interface ServerInfo {
   locale: string;
   bannerDetail: string;
   addr?: string;
+  resources: string[];
+}
+
+interface ResourceStats {
+  count: number;
+  players: number;
 }
 
 function stripColors(str: string): string {
@@ -135,8 +141,29 @@ function parseServerEntry(data: Uint8Array): { endPoint: string; serverData: Rec
   }
 }
 
+async function fetchServerResources(addr: string): Promise<string[]> {
+  try {
+    const res = await fetch(`http://${addr}/info.json`, {
+      signal: AbortSignal.timeout(3000),
+      headers: { 'User-Agent': 'RedMInsights/1.0' },
+    });
+    if (res.ok) {
+      const info = await res.json();
+      if (Array.isArray(info.resources)) {
+        return info.resources;
+      }
+    }
+  } catch {
+    // Server unreachable
+  }
+  return [];
+}
+
+const ENRICH_BATCH_SIZE = 30;
+
 export async function GET(): Promise<NextResponse> {
   try {
+    // 1. Fetch servers from protobuf stream
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
@@ -194,10 +221,47 @@ export async function GET(): Promise<NextResponse> {
         locale: vars.locale || '',
         bannerDetail: vars.banner_detail || '',
         addr: String(serverData.addr || ''),
+        resources: [],
       });
     }
 
-    return NextResponse.json({ servers, timestamp: new Date().toISOString() });
+    // 2. Enrich servers with resources (only those with valid addr)
+    const eligible = servers.filter((s) => s.addr && !s.addr.startsWith('https://'));
+
+    for (let i = 0; i < eligible.length; i += ENRICH_BATCH_SIZE) {
+      const batch = eligible.slice(i, i + ENRICH_BATCH_SIZE);
+      await Promise.allSettled(
+        batch.map(async (server) => {
+          const resources = await fetchServerResources(server.addr!);
+          server.resources = resources;
+        })
+      );
+    }
+
+    // 3. Build resource map
+    const resourceMap: Record<string, ResourceStats> = {};
+    for (const server of servers) {
+      for (const resource of server.resources) {
+        if (!resourceMap[resource]) resourceMap[resource] = { count: 0, players: 0 };
+        resourceMap[resource].count += 1;
+        resourceMap[resource].players += server.clients;
+      }
+    }
+
+    const serversWithResources = servers.filter((s) => s.resources.length > 0).length;
+    const totalPlayers = servers.reduce((sum, s) => sum + s.clients, 0);
+
+    return NextResponse.json({
+      servers,
+      resourceMap,
+      meta: {
+        serverCount: servers.length,
+        serversWithResources,
+        resourceCount: Object.keys(resourceMap).length,
+        totalPlayers,
+        cachedAt: new Date().toISOString(),
+      },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

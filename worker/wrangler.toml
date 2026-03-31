@@ -4,10 +4,10 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-CRAWL_URL = "https://redminsights.vercel.app/api/crawl"
+CRAWL_URL = "https://rmetrics.vercel.app/api/crawl"
 
 [triggers]
-crons = ["* * * * *"]
+crons = ["*/5 * * * *"]
 
 [[kv_namespaces]]
 binding = "KV"

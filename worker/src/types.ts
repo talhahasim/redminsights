@@ -35,9 +35,3 @@ export interface CrawlData {
     cachedAt: string;
   };
 }
-
-export interface CrawlState {
-  phase: 'idle' | 'enriching' | 'building';
-  batchIndex: number;
-  startedAt: string;
-}
