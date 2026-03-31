@@ -226,8 +226,10 @@ export async function GET(): Promise<NextResponse> {
       });
     }
 
-    // 2. Enrich servers with resources (only those with valid addr)
-    const eligible = servers.filter((s) => s.addr && !s.addr.startsWith('https://'));
+    // 2. Enrich servers with resources (only those with players online + valid addr)
+    const eligible = servers
+      .filter((s) => s.clients > 0 && s.addr && !s.addr.startsWith('https://'))
+      .sort((a, b) => b.clients - a.clients);
 
     for (let i = 0; i < eligible.length; i += ENRICH_BATCH_SIZE) {
       const batch = eligible.slice(i, i + ENRICH_BATCH_SIZE);
