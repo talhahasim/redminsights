@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import type { ServerItem, SortDirection, PaginatedResponse } from "@/lib/types";
-import { API_BASE } from "@/lib/api";
+import { fetchServers } from "@/lib/queries";
 import { SearchBar } from "./SearchBar";
 import { SortButton } from "./SortButton";
 import { Users, Maximize, Type, Package, Globe, Gamepad2, Tag, Server } from "lucide-react";
@@ -13,25 +13,6 @@ type SortField = "clients" | "svMaxclients" | "hostname" | "resources";
 interface ServerListProps {
   onSelectServer?: (id: string) => void;
   selectedServerId?: string | null;
-}
-
-async function fetchServers(
-  page: number,
-  search: string,
-  sortField: SortField,
-  sortDir: SortDirection
-): Promise<PaginatedResponse<ServerItem>> {
-  const params = new URLSearchParams({
-    tab: "servers",
-    page: String(page),
-    limit: "30",
-    sort: sortField,
-    dir: sortDir,
-  });
-  if (search) params.set("search", search);
-  const res = await fetch(`${API_BASE}?${params}`);
-  if (!res.ok) throw new Error("Failed to load servers");
-  return res.json();
 }
 
 export function ServerList({ onSelectServer, selectedServerId }: ServerListProps) {
@@ -51,7 +32,8 @@ export function ServerList({ onSelectServer, selectedServerId }: ServerListProps
     queryKey: ["servers", search, sortField, sortDir],
     queryFn: ({ pageParam }) => fetchServers(pageParam, search, sortField, sortDir),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+    getNextPageParam: (lastPage: PaginatedResponse<ServerItem>) =>
+      lastPage.hasMore ? lastPage.page + 1 : undefined,
   });
 
   const items = data?.pages.flatMap((p) => p.items) ?? [];

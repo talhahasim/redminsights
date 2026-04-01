@@ -1,37 +1,19 @@
 export interface Env {
-  KV: KVNamespace;
-  CRAWL_URL: string;
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
 }
 
 export interface ServerInfo {
   id: string;
   hostname: string;
   clients: number;
-  svMaxclients: number;
+  sv_maxclients: number;
   gametype: string;
   mapname: string;
-  projectName: string;
-  projectDesc: string;
+  project_name: string;
+  project_desc: string;
   tags: string;
   locale: string;
-  bannerDetail: string;
-  addr?: string;
-  resources: string[];
-}
-
-export interface ResourceStats {
-  count: number;
-  players: number;
-}
-
-export interface CrawlData {
-  servers: ServerInfo[];
-  resourceMap: Record<string, ResourceStats>;
-  meta: {
-    serverCount: number;
-    serversWithResources: number;
-    resourceCount: number;
-    totalPlayers: number;
-    cachedAt: string;
-  };
+  banner_detail: string;
+  addr: string;
 }

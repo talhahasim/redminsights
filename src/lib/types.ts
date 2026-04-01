@@ -44,7 +44,6 @@ export interface Meta {
   serversWithResources: number;
   resourceCount: number;
   totalPlayers: number;
-  fetchTime?: number;
   cachedAt: string;
 }
 
@@ -54,7 +53,6 @@ export type PaginatedResponse<T = ServerItem | ResourceItem> = {
   total: number;
   page: number;
   hasMore: boolean;
-  meta: Meta;
 };
 
-export type SortDirection = "asc" | "desc";
+export type SortDirection = 'asc' | 'desc';

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ServerDetailItem } from "@/lib/types";
-import { API_BASE } from "@/lib/api";
+import { fetchServerDetail } from "@/lib/queries";
 import {
   X,
   Users,
@@ -21,12 +21,6 @@ interface ServerDetailProps {
   onClose: () => void;
 }
 
-async function fetchServer(id: string): Promise<ServerDetailItem> {
-  const res = await fetch(`${API_BASE}?id=${encodeURIComponent(id)}`);
-  if (!res.ok) throw new Error("Failed to load server");
-  return res.json();
-}
-
 function ServerImage({ src }: { src: string }) {
   const [imgError, setImgError] = useState(false);
 
@@ -40,7 +34,6 @@ function ServerImage({ src }: { src: string }) {
 
   return (
     <div className="w-full aspect-[16/9] bg-background overflow-hidden">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
         alt=""
@@ -61,11 +54,10 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
     refetch,
   } = useQuery({
     queryKey: ["server", serverId],
-    queryFn: () => fetchServer(serverId!),
+    queryFn: () => fetchServerDetail(serverId!),
     enabled: !!serverId,
   });
 
-  // Escape key closes the panel
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -88,7 +80,6 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
       }`}
     >
       <div className="w-full h-full min-w-[360px] border-l border-border bg-surface overflow-y-auto">
-        {/* Close button */}
         <div className="sticky top-0 z-10 bg-surface border-b border-border px-4 py-3 flex items-center justify-between">
           <span className="text-xs text-muted uppercase tracking-wider">
             Server Details
@@ -125,7 +116,6 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
 
         {!isLoading && !error && server && (
           <div className="p-4 space-y-5">
-            {/* Banner - key forces remount on server change */}
             {server.bannerDetail ? (
               <ServerImage key={serverId} src={server.bannerDetail} />
             ) : (
@@ -134,7 +124,6 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
               </div>
             )}
 
-            {/* Name + description */}
             <div>
               <h2 className="text-base font-bold text-foreground leading-tight">
                 {server.projectName || server.hostname}
@@ -146,7 +135,6 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
               )}
             </div>
 
-            {/* Player bar */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-1.5 text-sm">
@@ -168,7 +156,6 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
               </div>
             </div>
 
-            {/* Meta grid */}
             <div className="grid grid-cols-2 gap-3">
               {server.locale && (
                 <MetaItem
@@ -198,7 +185,6 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
               />
             </div>
 
-            {/* Tags */}
             {server.tags && (
               <div>
                 <h3 className="text-[11px] text-muted uppercase tracking-wider mb-2">
@@ -222,7 +208,6 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
               </div>
             )}
 
-            {/* Connect link */}
             {server.id && (
               <a
                 href={`https://cfx.re/join/${server.id}`}
@@ -235,7 +220,6 @@ export function ServerDetail({ serverId, onClose }: ServerDetailProps) {
               </a>
             )}
 
-            {/* Resources list */}
             {server.resources.length > 0 && (
               <div>
                 <h3 className="text-[11px] text-muted uppercase tracking-wider mb-2">

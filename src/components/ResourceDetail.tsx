@@ -3,18 +3,12 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ResourceDetailItem } from "@/lib/types";
-import { API_BASE } from "@/lib/api";
+import { fetchResourceDetail } from "@/lib/queries";
 import { X, Users, Server, Package } from "lucide-react";
 
 interface ResourceDetailProps {
   resourceName: string | null;
   onClose: () => void;
-}
-
-async function fetchResource(name: string): Promise<ResourceDetailItem> {
-  const res = await fetch(`${API_BASE}?resource=${encodeURIComponent(name)}`);
-  if (!res.ok) throw new Error("Failed to load resource");
-  return res.json();
 }
 
 export function ResourceDetail({ resourceName, onClose }: ResourceDetailProps) {
@@ -27,11 +21,10 @@ export function ResourceDetail({ resourceName, onClose }: ResourceDetailProps) {
     refetch,
   } = useQuery({
     queryKey: ["resource", resourceName],
-    queryFn: () => fetchResource(resourceName!),
+    queryFn: () => fetchResourceDetail(resourceName!),
     enabled: !!resourceName,
   });
 
-  // Escape key closes the panel
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -49,7 +42,6 @@ export function ResourceDetail({ resourceName, onClose }: ResourceDetailProps) {
       }`}
     >
       <div className="w-full h-full min-w-[360px] border-l border-border bg-surface overflow-y-auto">
-        {/* Header */}
         <div className="sticky top-0 z-10 bg-surface border-b border-border px-4 py-3 flex items-center justify-between">
           <span className="text-xs text-muted uppercase tracking-wider">
             Resource Details
@@ -86,7 +78,6 @@ export function ResourceDetail({ resourceName, onClose }: ResourceDetailProps) {
 
         {!isLoading && !error && data && (
           <div className="p-4 space-y-5">
-            {/* Resource name */}
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <Package className="w-4 h-4 text-accent" />
@@ -96,7 +87,6 @@ export function ResourceDetail({ resourceName, onClose }: ResourceDetailProps) {
               </div>
             </div>
 
-            {/* Stats */}
             <div className="grid grid-cols-2 gap-3">
               <StatCard
                 icon={<Server className="w-3.5 h-3.5" />}
@@ -110,7 +100,6 @@ export function ResourceDetail({ resourceName, onClose }: ResourceDetailProps) {
               />
             </div>
 
-            {/* Server list */}
             {data.servers.length > 0 && (
               <div>
                 <h3 className="text-[11px] text-muted uppercase tracking-wider mb-2">
@@ -164,7 +153,6 @@ function ServerRow({
   return (
     <div className="bg-background border border-border hover:border-muted/30 transition-colors overflow-hidden">
       <div className="flex items-center gap-2.5 px-3 py-2">
-        {/* Thumbnail */}
         {server.bannerDetail && !imgError ? (
           <div className="w-8 h-8 shrink-0 bg-surface overflow-hidden">
             <img

@@ -8,7 +8,7 @@ import type {
   PaginatedResponse,
   Meta,
 } from "@/lib/types";
-import { API_BASE } from "@/lib/api";
+import { fetchResources, fetchAllResources } from "@/lib/queries";
 import { SearchBar } from "./SearchBar";
 import { SortButton } from "./SortButton";
 import { Server, Users, Hash, Download } from "lucide-react";
@@ -19,25 +19,6 @@ interface ResourceListProps {
   onSelectResource?: (name: string) => void;
   selectedResourceName?: string | null;
   meta?: Meta | null;
-}
-
-async function fetchResources(
-  page: number,
-  search: string,
-  sortField: SortField,
-  sortDir: SortDirection
-): Promise<PaginatedResponse<ResourceItem>> {
-  const params = new URLSearchParams({
-    tab: "resources",
-    page: String(page),
-    limit: "50",
-    sort: sortField,
-    dir: sortDir,
-  });
-  if (search) params.set("search", search);
-  const res = await fetch(`${API_BASE}?${params}`);
-  if (!res.ok) throw new Error("Failed to load resources");
-  return res.json();
 }
 
 const isDev = process.env.NODE_ENV === "development";
@@ -60,7 +41,8 @@ export function ResourceList({ onSelectResource, selectedResourceName, meta }: R
     queryKey: ["resources", search, sortField, sortDir],
     queryFn: ({ pageParam }) => fetchResources(pageParam, search, sortField, sortDir),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+    getNextPageParam: (lastPage: PaginatedResponse<ResourceItem>) =>
+      lastPage.hasMore ? lastPage.page + 1 : undefined,
   });
 
   const items = data?.pages.flatMap((p) => p.items) ?? [];
@@ -102,20 +84,9 @@ export function ResourceList({ onSelectResource, selectedResourceName, meta }: R
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
-      const params = new URLSearchParams({
-        tab: "resources",
-        page: "1",
-        limit: "50",
-        sort: sortField,
-        dir: sortDir,
-        all: "true",
-      });
-      if (search) params.set("search", search);
-      const res = await fetch(`${API_BASE}?${params}`);
-      if (!res.ok) return;
-      const data: PaginatedResponse<ResourceItem> = await res.json();
+      const allItems = await fetchAllResources(search, sortField, sortDir);
       const csv = ["Rank,Name,Server Count"]
-        .concat(data.items.map((r) => `${r.globalRank},"${r.name}",${r.count}`))
+        .concat(allItems.map((r) => `${r.globalRank},"${r.name}",${r.count}`))
         .join("\n");
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
@@ -213,7 +184,6 @@ export function ResourceList({ onSelectResource, selectedResourceName, meta }: R
                     : "border-border hover:border-muted/30"
                 }`}
               >
-                {/* Background bar */}
                 <div
                   className="absolute inset-y-0 left-0 bg-accent/8 transition-all"
                   style={{ width: `${Math.min(barWidth, 100)}%` }}

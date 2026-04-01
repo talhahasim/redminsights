@@ -1,14 +1,12 @@
-name = "redminsights-api"
+name = "redminsights-crawler"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-CRAWL_URL = "https://rmetrics.vercel.app/api/crawl"
+SUPABASE_URL = "https://vimsbromshoerxcurbuz.supabase.co"
+
+# SUPABASE_SERVICE_ROLE_KEY -> set via: wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 
 [triggers]
-crons = ["*/5 * * * *"]
-
-[[kv_namespaces]]
-binding = "KV"
-id = "77c3eca271bd4ee8a608e37bbaf1cc08"
+crons = ["0 * * * *"]
